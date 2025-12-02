@@ -88,9 +88,19 @@ const httpServer = http.createServer((req, res) => {
     // Serve webapp files
     let filePath = req.url === '/' ? '/index.html' : req.url;
     
-    // Prevent directory traversal attacks
-    const safePath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
-    const webappPath = path.join(__dirname, '..', 'webapp', safePath);
+    // Remove query string and decode URL
+    filePath = decodeURIComponent(filePath.split('?')[0]);
+    
+    // Prevent directory traversal attacks - resolve to absolute path and verify it's within webapp
+    const webappRoot = path.resolve(__dirname, '..', 'webapp');
+    const webappPath = path.resolve(webappRoot, '.' + filePath);
+    
+    // Security check: ensure resolved path is within webapp directory
+    if (!webappPath.startsWith(webappRoot + path.sep) && webappPath !== webappRoot) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+    }
     
     // Check if file exists
     if (fs.existsSync(webappPath) && fs.statSync(webappPath).isFile()) {

@@ -9,6 +9,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
+
+#ifdef HOST_SIMULATION
+#include <time.h>
+#endif
 
 /* ============================================================================
  * Private Function Prototypes
@@ -518,9 +523,15 @@ static ws_error_t ws_tcp_connect(ws_client_t *client)
     {
         int a, b, c, d;
         if (sscanf(client->config.host, "%d.%d.%d.%d", &a, &b, &c, &d) == 4) {
+            /* Validate IP address octets are in valid range */
+            if (a < 0 || a > 255 || b < 0 || b > 255 || 
+                c < 0 || c > 255 || d < 0 || d > 255) {
+                DEBUG_ERR("Invalid IP address range: %s", client->config.host);
+                return WS_ERROR_INVALID_PARAM;
+            }
             server_ip = IP_ADDRESS(a, b, c, d);
         } else {
-            DEBUG_ERR("Invalid server IP: %s", client->config.host);
+            DEBUG_ERR("Invalid server IP format: %s", client->config.host);
             return WS_ERROR_INVALID_PARAM;
         }
     }
@@ -815,9 +826,29 @@ static ws_error_t ws_receive_frame(ws_client_t *client, ws_frame_t *frame)
 static void ws_generate_key(UCHAR *key, UINT len)
 {
     UINT i;
-    static UINT seed = 12345;
     
-    /* Simple PRNG - in production use hardware RNG or better algorithm */
+    /*
+     * NOTE: This is a simulation/demo implementation using time-based seeding.
+     * For production on ASR 3605:
+     * - Use hardware RNG if available
+     * - Use mbedtls_ctr_drbg_random() from mbedTLS
+     * - Use ThreadX secure random if available
+     */
+#ifdef HOST_SIMULATION
+    static UINT seed = 0;
+    if (seed == 0) {
+        /* Seed from time and process address for simulation */
+        seed = (UINT)time(NULL) ^ (UINT)(uintptr_t)key;
+    }
+#else
+    static UINT seed = 0;
+    if (seed == 0) {
+        /* On real hardware, use hardware RNG or timer-based entropy */
+        seed = tx_time_get() ^ 0xDEADBEEF;
+    }
+#endif
+    
+    /* LCG-based PRNG - adequate for WebSocket key generation in simulation */
     for (i = 0; i < len; i++) {
         seed = seed * 1103515245 + 12345;
         key[i] = (seed >> 16) & 0xFF;
@@ -852,27 +883,99 @@ static void base64_encode(const UCHAR *input, UINT input_len, UCHAR *output)
     output[j] = '\0';
 }
 
-/* Simplified SHA1 - in production use mbedTLS or hardware crypto */
+/*
+ * SHA-1 Implementation for WebSocket handshake
+ * Based on RFC 3174 - simplified for embedded use
+ * NOTE: For production, use mbedtls_sha1() instead
+ */
+
+/* SHA-1 circular left shift */
+#define SHA1_ROTL(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
+
 static void sha1_compute(const UCHAR *data, UINT len, UCHAR *hash)
 {
-    /* This is a placeholder - real implementation would use mbedTLS */
-    /* sha1() from mbedtls_sha1() or similar */
-    UINT i;
     UINT h0 = 0x67452301;
     UINT h1 = 0xEFCDAB89;
     UINT h2 = 0x98BADCFE;
     UINT h3 = 0x10325476;
     UINT h4 = 0xC3D2E1F0;
     
-    /* Simple hash for demo - replace with real SHA1 */
-    for (i = 0; i < len; i++) {
-        h0 = ((h0 << 5) | (h0 >> 27)) + data[i];
-        h1 ^= h0;
-        h2 += h1;
-        h3 ^= h2;
-        h4 += h3;
+    UINT i, j;
+    UINT padded_len;
+    UCHAR *padded;
+    UINT w[80];
+    UINT a, b, c, d, e, f, k, temp;
+    
+    /* Calculate padded length (multiple of 64 bytes) */
+    padded_len = ((len + 8) / 64 + 1) * 64;
+    padded = (UCHAR *)malloc(padded_len);
+    if (padded == NULL) {
+        /* Fallback to simple hash if allocation fails */
+        memset(hash, 0, 20);
+        return;
     }
     
+    /* Copy data and add padding */
+    memcpy(padded, data, len);
+    padded[len] = 0x80;  /* Append bit '1' */
+    memset(padded + len + 1, 0, padded_len - len - 1);
+    
+    /* Append original length in bits (big-endian, 64-bit) */
+    {
+        UINT64 bit_len = (UINT64)len * 8;
+        padded[padded_len - 8] = (bit_len >> 56) & 0xFF;
+        padded[padded_len - 7] = (bit_len >> 48) & 0xFF;
+        padded[padded_len - 6] = (bit_len >> 40) & 0xFF;
+        padded[padded_len - 5] = (bit_len >> 32) & 0xFF;
+        padded[padded_len - 4] = (bit_len >> 24) & 0xFF;
+        padded[padded_len - 3] = (bit_len >> 16) & 0xFF;
+        padded[padded_len - 2] = (bit_len >> 8) & 0xFF;
+        padded[padded_len - 1] = bit_len & 0xFF;
+    }
+    
+    /* Process each 64-byte block */
+    for (i = 0; i < padded_len; i += 64) {
+        /* Prepare message schedule */
+        for (j = 0; j < 16; j++) {
+            w[j] = (padded[i + j*4] << 24) |
+                   (padded[i + j*4 + 1] << 16) |
+                   (padded[i + j*4 + 2] << 8) |
+                   (padded[i + j*4 + 3]);
+        }
+        for (j = 16; j < 80; j++) {
+            w[j] = SHA1_ROTL(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);
+        }
+        
+        /* Initialize working variables */
+        a = h0; b = h1; c = h2; d = h3; e = h4;
+        
+        /* Main loop */
+        for (j = 0; j < 80; j++) {
+            if (j < 20) {
+                f = (b & c) | ((~b) & d);
+                k = 0x5A827999;
+            } else if (j < 40) {
+                f = b ^ c ^ d;
+                k = 0x6ED9EBA1;
+            } else if (j < 60) {
+                f = (b & c) | (b & d) | (c & d);
+                k = 0x8F1BBCDC;
+            } else {
+                f = b ^ c ^ d;
+                k = 0xCA62C1D6;
+            }
+            
+            temp = SHA1_ROTL(a, 5) + f + e + k + w[j];
+            e = d; d = c; c = SHA1_ROTL(b, 30); b = a; a = temp;
+        }
+        
+        /* Add to hash */
+        h0 += a; h1 += b; h2 += c; h3 += d; h4 += e;
+    }
+    
+    free(padded);
+    
+    /* Output hash in big-endian */
     hash[0] = (h0 >> 24) & 0xFF;
     hash[1] = (h0 >> 16) & 0xFF;
     hash[2] = (h0 >> 8) & 0xFF;
@@ -925,6 +1028,9 @@ static UINT ws_parse_http_response(const char *response, const char *expected_ac
     const char *upgrade_header;
     const char *connection_header;
     const char *accept_header;
+    const char *accept_value;
+    char actual_accept[64];
+    UINT i;
     
     /* Check status code 101 */
     status_line = strstr(response, "HTTP/1.1 101");
@@ -947,15 +1053,31 @@ static UINT ws_parse_http_response(const char *response, const char *expected_ac
         return 0;
     }
     
-    /* Check Sec-WebSocket-Accept (simplified check) */
+    /* Check Sec-WebSocket-Accept header and verify value */
     accept_header = strstr(response, "Sec-WebSocket-Accept:");
     if (accept_header == NULL) {
         DEBUG_ERR("Missing Sec-WebSocket-Accept header");
         return 0;
     }
     
-    /* In production, verify accept_header value matches expected_accept */
-    /* For now, just check it exists */
+    /* Extract the accept value (skip header name and whitespace) */
+    accept_value = accept_header + 21;  /* Skip "Sec-WebSocket-Accept:" */
+    while (*accept_value == ' ' || *accept_value == '\t') {
+        accept_value++;
+    }
     
+    /* Copy until end of line */
+    for (i = 0; i < sizeof(actual_accept) - 1 && accept_value[i] != '\r' && accept_value[i] != '\n' && accept_value[i] != '\0'; i++) {
+        actual_accept[i] = accept_value[i];
+    }
+    actual_accept[i] = '\0';
+    
+    /* Verify the accept key matches expected value */
+    if (strncmp(actual_accept, expected_accept, 28) != 0) {
+        DEBUG_ERR("Sec-WebSocket-Accept mismatch: expected '%s', got '%s'", expected_accept, actual_accept);
+        return 0;
+    }
+    
+    DEBUG_DBG("WebSocket handshake validated successfully");
     return 1;
 }
