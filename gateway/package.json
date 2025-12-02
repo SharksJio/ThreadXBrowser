@@ -1,0 +1,26 @@
+{
+  "name": "threadxbrowser-gateway",
+  "version": "1.0.0",
+  "description": "WebSocket gateway server for ThreadXBrowser - bridges browser clients to ASR 3605 devices",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "websocket",
+    "gateway",
+    "threadx",
+    "asr3605",
+    "iot"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,52 @@
+{
+    "name": "ThreadXBrowser Development",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+    "forwardPorts": [8080, 9000],
+    "portsAttributes": {
+        "8080": {
+            "label": "Web App / Browser WebSocket",
+            "onAutoForward": "openBrowser"
+        },
+        "9000": {
+            "label": "Device WebSocket",
+            "onAutoForward": "silent"
+        }
+    },
+    "postCreateCommand": "cd gateway && npm install",
+    "postStartCommand": "echo 'ThreadXBrowser development environment ready!'",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode",
+                "marus25.cortex-debug",
+                "ms-azuretools.vscode-docker"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "C_Cpp.default.compilerPath": "/usr/bin/arm-none-eabi-gcc",
+                "C_Cpp.default.includePath": [
+                    "${workspaceFolder}/src",
+                    "/opt/threadx/common/inc",
+                    "/opt/netx/common/inc"
+                ],
+                "editor.formatOnSave": true,
+                "files.associations": {
+                    "*.h": "c"
+                }
+            }
+        }
+    },
+    "remoteUser": "vscode"
+}
