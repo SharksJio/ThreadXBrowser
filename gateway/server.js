@@ -85,6 +85,8 @@ function decodeDeviceMessage(data) {
  * Create HTTP server for serving static files (webapp)
  */
 const httpServer = http.createServer((req, res) => {
+    console.log(`[HTTP] ${req.method} ${req.url} from ${req.socket.remoteAddress}`);
+    
     // Serve webapp files
     let filePath = req.url === '/' ? '/index.html' : req.url;
     
@@ -92,7 +94,7 @@ const httpServer = http.createServer((req, res) => {
     filePath = decodeURIComponent(filePath.split('?')[0]);
     
     // Prevent directory traversal attacks - resolve to absolute path and verify it's within webapp
-    const webappRoot = path.resolve(__dirname, '..', 'webapp');
+    const webappRoot = path.resolve(__dirname, 'webapp');
     const webappPath = path.resolve(webappRoot, '.' + filePath);
     
     // Security check: ensure resolved path is within webapp directory
@@ -194,6 +196,10 @@ browserWss.on('connection', (ws, req) => {
     // Setup heartbeat
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
+});
+
+browserWss.on('error', (err) => {
+    console.error('[BROWSER WSS] Server error:', err);
 });
 
 /**

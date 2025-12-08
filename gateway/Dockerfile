@@ -3,13 +3,14 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY gateway/package*.json ./
 
 # Install dependencies
 RUN npm install --omit=dev
 
 # Copy application code
-COPY server.js ./
+COPY gateway/server.js ./
+COPY webapp/ /app/webapp/
 
 # Expose ports
 EXPOSE 8080 9000

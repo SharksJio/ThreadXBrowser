@@ -407,7 +407,7 @@ void tx_application_define(void *first_unused_memory)
     printf("[SIM] The emulator is now ready to receive streaming commands from the web interface\n");
     printf("[SIM] \n");
     printf("[SIM] Instructions:\n");
-    printf("[SIM] 1. Open http://localhost:8081 in your browser\n");
+    printf("[SIM] 1. Open http://localhost:8080 in your browser\n");
     printf("[SIM] 2. Enter a website URL in the 'Website Streaming' section\n");
     printf("[SIM] 3. Click 'Load Website' to preview\n");
     printf("[SIM] 4. Click 'Stream to Device' to start streaming here\n");

@@ -434,7 +434,7 @@
         const maxReconnectAttempts = 10;
         const reconnectDelay = 3000;
         let streamInterval = null;
-        let currentUrl = null;
+        let msgCount = 0;
         
         // Get WebSocket URL (handle both development and production)
         function getWsUrl() {
@@ -446,12 +446,16 @@
         // Connect to WebSocket server
         function connect() {
             const wsUrl = getWsUrl();
+            console.log('[DEBUG] connect() called, wsUrl:', wsUrl);
             log('info', `Connecting to ${wsUrl}...`);
             
             try {
+                console.log('[DEBUG] Creating WebSocket...');
                 ws = new WebSocket(wsUrl);
+                console.log('[DEBUG] WebSocket created:', ws);
                 
                 ws.onopen = () => {
+                    console.log('[DEBUG] WebSocket.onopen fired');
                     log('success', 'Connected to gateway server');
                     connectionStatus.classList.add('connected');
                     connectionText.textContent = 'Connected';
@@ -482,10 +486,12 @@
                 };
                 
                 ws.onerror = (error) => {
+                    console.error('[DEBUG] WebSocket.onerror fired:', error);
                     log('error', 'WebSocket error');
                     console.error('WebSocket error:', error);
                 };
             } catch (err) {
+                console.error('[DEBUG] Exception in connect():', err);
                 log('error', `Connection failed: ${err.message}`);
             }
         }
@@ -948,6 +954,7 @@
         };
         
         // Start connection
+        console.log('[DEBUG] Script loaded, about to call connect()...');
         connect();
     </script>
 </body>
