@@ -7,6 +7,8 @@
 #include "platform_config.h"
 #include "threadx_netx_init.h"
 #include "websocket_client.h"
+#include "stream_handler.h"
+#include "ws_client_sim.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -78,11 +80,44 @@ int main(int argc, char *argv[])
     printf("[SIM] Calling tx_application_define...\n");
     tx_application_define(NULL);
     
+    /* Connect to WebSocket gateway */
+    const char *ws_host = getenv("WS_SERVER_HOST");
+    const char *ws_port_str = getenv("WS_SERVER_PORT");
+    
+    if (!ws_host) ws_host = "gateway";
+    int ws_port = ws_port_str ? atoi(ws_port_str) : 9000;
+    
+    printf("[SIM] Connecting to WebSocket gateway at %s:%d...\n", ws_host, ws_port);
+    
+    if (ws_connect(ws_host, ws_port) == 0) {
+        printf("[SIM] Successfully connected to gateway!\n");
+        printf("[SIM] Emulator is now visible in the web interface\n\n");
+    } else {
+        printf("[SIM] Failed to connect to gateway\n");
+        printf("[SIM] Running in standalone mode...\n\n");
+    }
+    
     /* Simulation main loop */
     printf("[SIM] Entering main loop (Ctrl+C to exit)...\n\n");
+    
     while (sim_running) {
-        sleep(1);
+        /* Process WebSocket messages (poll 10 times per second) */
+        for (int i = 0; i < 10 && ws_is_connected(); i++) {
+            ws_receive();
+            usleep(100000);  /* 100ms */
+        }
+        
+        /* Check for stream status every 5 seconds */
+        static int status_counter = 0;
+        if (status_counter++ % 5 == 0 && is_stream_active()) {
+            char stats[256];
+            get_stream_stats(stats, sizeof(stats));
+            printf("[STATUS] %s\n", stats);
+        }
     }
+    
+    /* Cleanup */
+    ws_disconnect();
     
     /* Cleanup */
     printf("\n[SIM] Shutting down...\n");
@@ -361,6 +396,22 @@ UINT tx_thread_resume(TX_THREAD *thread_ptr)
                        (void*)thread_ptr->tx_thread_entry_input);
     }
     return TX_SUCCESS;
+}
+
+/* Stub for tx_application_define - would be implemented in threadx_netx_init.c for real hardware */
+void tx_application_define(void *first_unused_memory)
+{
+    (void)first_unused_memory;
+    printf("[SIM] tx_application_define called\n");
+    printf("[SIM] This is a minimal simulation - full ThreadX/NetX functionality requires actual libraries\n");
+    printf("[SIM] The emulator is now ready to receive streaming commands from the web interface\n");
+    printf("[SIM] \n");
+    printf("[SIM] Instructions:\n");
+    printf("[SIM] 1. Open http://localhost:8081 in your browser\n");
+    printf("[SIM] 2. Enter a website URL in the 'Website Streaming' section\n");
+    printf("[SIM] 3. Click 'Load Website' to preview\n");
+    printf("[SIM] 4. Click 'Stream to Device' to start streaming here\n");
+    printf("[SIM] \n");
 }
 
 #endif /* HOST_SIMULATION */

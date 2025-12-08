@@ -236,25 +236,27 @@ deviceWss.on('connection', (ws, req) => {
         }
         
         try {
-            // Device messages can be binary protocol or plain text/JSON
+            // Device messages can be binary protocol, plain text, or JSON
             if (Buffer.isBuffer(data) && data.length >= 5) {
-                // Try to decode as binary protocol
+                // Try to decode as binary protocol first
                 try {
                     const decoded = decodeDeviceMessage(data);
                     handleDeviceMessage(clientId, decoded);
+                    return;
                 } catch (decodeErr) {
-                    // Fallback to treating as raw binary
-                    handleDeviceMessage(clientId, { type: MSG_TYPE.BINARY_DATA, payload: data });
+                    // Not binary protocol, continue to text parsing
                 }
-            } else {
-                // Treat as text message
-                const message = data.toString();
-                try {
-                    const json = JSON.parse(message);
-                    handleDeviceMessage(clientId, { type: MSG_TYPE.JSON_TEXT, payload: message, parsed: json });
-                } catch (jsonErr) {
-                    handleDeviceMessage(clientId, { type: MSG_TYPE.JSON_TEXT, payload: message });
-                }
+            }
+            
+            // Try as plain text/JSON (for simple emulators)
+            const message = data.toString();
+            try {
+                const json = JSON.parse(message);
+                console.log(`[DEVICE] JSON message from ${clientId}:`, json.type || 'unknown');
+                handleDeviceMessage(clientId, { type: MSG_TYPE.JSON_TEXT, payload: message, parsed: json });
+            } catch (jsonErr) {
+                // Treat as plain text
+                handleDeviceMessage(clientId, { type: MSG_TYPE.JSON_TEXT, payload: message });
             }
         } catch (err) {
             console.error(`[DEVICE] Error processing message from ${clientId}:`, err.message);
@@ -368,6 +370,9 @@ function handleBrowserMessage(browserId, message) {
  */
 function handleDeviceMessage(deviceId, message) {
     console.log(`[DEVICE] Message from ${deviceId}: type=${message.type}`);
+    if (message.payload) {
+        console.log(`[DEVICE] Payload preview:`, message.payload.toString().substring(0, 100));
+    }
     stats.messagesRelayed++;
     
     const device = deviceClients.get(deviceId);
@@ -377,12 +382,15 @@ function handleDeviceMessage(deviceId, message) {
             // Forward JSON to all browsers
             const jsonPayload = message.parsed || JSON.parse(message.payload.toString());
             
+            console.log(`[DEVICE] Parsed JSON:`, JSON.stringify(jsonPayload));
+            
             // Update device info if it's a hello message
             if (jsonPayload.type === 'hello' && device) {
                 device.info = {
                     deviceType: jsonPayload.device,
                     version: jsonPayload.version,
                 };
+                console.log(`[DEVICE] Device ${deviceId} info updated:`, device.info);
             }
             
             broadcastToBrowsers({

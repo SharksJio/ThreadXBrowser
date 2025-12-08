@@ -8,9 +8,23 @@
 #define WEBSOCKET_CLIENT_H
 
 #include "platform_config.h"
+
+/* Include ThreadX/NetX headers only when not in simulation mode */
+#ifndef HOST_SIMULATION
 #include "tx_api.h"
 #include "nx_api.h"
 #include "nx_tcp.h"
+#else
+/* Use stub types from threadx_netx_init.h */
+#include "threadx_netx_init.h"
+
+/* NetX TCP stub types */
+typedef struct NX_TCP_SOCKET_STRUCT {
+    int nx_tcp_socket_state;
+} NX_TCP_SOCKET;
+
+#define NX_TCP_ESTABLISHED  1
+#endif /* HOST_SIMULATION */
 
 #ifdef __cplusplus
 extern "C" {

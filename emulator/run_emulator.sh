@@ -6,7 +6,7 @@ set -e
 
 # Default configuration
 WS_HOST="${WS_SERVER_HOST:-localhost}"
-WS_PORT="${WS_SERVER_PORT:-9000}"
+WS_PORT="${WS_SERVER_PORT:-9001}"
 
 echo "=========================================="
 echo "ThreadXBrowser Emulator"

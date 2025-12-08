@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy source files
+# Copy source files from parent directory
 COPY src/ ./src/
 COPY Makefile ./
 

@@ -114,13 +114,25 @@
         
         .device-item {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
             padding: 15px;
             background: rgba(0,212,255,0.1);
             border-radius: 8px;
             margin-bottom: 10px;
             border: 1px solid rgba(0,212,255,0.2);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .device-item:hover {
+            background: rgba(0,212,255,0.15);
+            border-color: rgba(0,212,255,0.4);
+        }
+        
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
         .device-item .device-info h3 {
@@ -334,7 +346,39 @@
         </div>
         
         <div class="panel" style="margin-top: 20px;">
-            <h2><span class="icon">🎮</span> Controls</h2>
+            <h2><span class="icon">🌐</span> Website Streaming</h2>
+            <div class="controls">
+                <div class="input-group">
+                    <input type="text" id="websiteUrl" placeholder="Enter website URL (e.g., https://example.com)">
+                    <button class="primary" id="loadWebsiteBtn">Load Website</button>
+                </div>
+                <div style="margin-bottom: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #ffaa44; border-radius: 4px; font-size: 0.85rem;">
+                    <strong>Note:</strong> Some websites (Google, Facebook, etc.) block iframe loading due to security policies. The URL will still be sent to the device even if preview fails.
+                </div>
+                <div class="input-group">
+                    <label style="display: flex; align-items: center; gap: 8px; color: #888; cursor: pointer;">
+                        <input type="checkbox" id="useProxy" style="width: auto;">
+                        Use CORS proxy (for blocked websites)
+                    </label>
+                </div>
+                <div class="input-group">
+                    <select id="streamQuality">
+                        <option value="high">High Quality</option>
+                        <option value="medium" selected>Medium Quality</option>
+                        <option value="low">Low Quality (Device Optimized)</option>
+                    </select>
+                    <button class="primary" id="streamBtn" disabled>Stream to Device</button>
+                    <button class="secondary" id="stopStreamBtn" disabled>Stop Stream</button>
+                </div>
+                <div id="websitePreview" style="display: none; margin-top: 15px;">
+                    <p style="margin-bottom: 10px; color: #888;">Preview:</p>
+                    <iframe id="websiteFrame" style="width: 100%; height: 400px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: white;"></iframe>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel" style="margin-top: 20px;">
+            <h2><span class="icon">🎮</span> Manual Controls</h2>
             <div class="controls">
                 <div class="input-group">
                     <input type="text" id="targetDevice" placeholder="Device ID (leave empty for broadcast)">
@@ -372,15 +416,25 @@
         const pingBtn = document.getElementById('pingBtn');
         const statsBtn = document.getElementById('statsBtn');
         const clearBtn = document.getElementById('clearBtn');
+        const websiteUrl = document.getElementById('websiteUrl');
+        const loadWebsiteBtn = document.getElementById('loadWebsiteBtn');
+        const streamQuality = document.getElementById('streamQuality');
+        const streamBtn = document.getElementById('streamBtn');
+        const stopStreamBtn = document.getElementById('stopStreamBtn');
+        const websitePreview = document.getElementById('websitePreview');
+        const websiteFrame = document.getElementById('websiteFrame');
+        const useProxy = document.getElementById('useProxy');
         
         // State
         let ws = null;
         let clientId = null;
         let devices = new Map();
-        let msgCount = 0;
+        let currentUrl = null;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 10;
         const reconnectDelay = 3000;
+        let streamInterval = null;
+        let currentUrl = null;
         
         // Get WebSocket URL (handle both development and production)
         function getWsUrl() {
@@ -518,6 +572,21 @@
                 if (data.type === 'hello') {
                     device.info = { ...device.info, ...data };
                 }
+                // Track streaming state
+                if (data.type === 'streamStart') {
+                    device.streamingUrl = data.url;
+                    device.streamQuality = data.quality;
+                    device.streamFrame = 0;
+                    log('success', `Device ${deviceId} started streaming ${data.url}`);
+                } else if (data.type === 'streamUpdate') {
+                    device.streamFrame = data.frame;
+                    if (data.url) device.streamingUrl = data.url;
+                } else if (data.type === 'streamStop') {
+                    device.streamingUrl = null;
+                    device.streamQuality = null;
+                    device.streamFrame = 0;
+                    log('info', `Device ${deviceId} stopped streaming`);
+                }
                 device.lastMessage = data;
                 device.lastSeen = Date.now();
                 renderDeviceList();
@@ -541,12 +610,37 @@
             devices.forEach((device) => {
                 const li = document.createElement('li');
                 li.className = 'device-item';
-                li.innerHTML = `
-                    <div class="device-info">
-                        <h3>${device.id}</h3>
-                        <p>${device.info.device || 'Unknown'} v${device.info.version || '?'}</p>
+                
+                // Check if device is streaming
+                const isStreaming = device.streamingUrl && device.streamingUrl !== '';
+                const streamInfo = isStreaming ? `
+                    <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <span style="color: #00d4ff; font-size: 1.2rem;">🌐</span>
+                            <div style="flex: 1; min-width: 0;">
+                                <p style="font-size: 0.75rem; color: #888; margin: 0;">Streaming:</p>
+                                <p style="font-size: 0.85rem; color: #fff; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${device.streamingUrl}</p>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; font-size: 0.75rem; color: #888;">
+                            <span>Quality: <strong style="color: #00d4ff;">${device.streamQuality || 'medium'}</strong></span>
+                            <span>Frame: <strong style="color: #00d4ff;">${device.streamFrame || 0}</strong></span>
+                        </div>
+                        <div style="margin-top: 8px; border: 1px solid rgba(0,212,255,0.3); border-radius: 4px; overflow: hidden; background: white;">
+                            <iframe src="${device.streamingUrl}" style="width: 100%; height: 150px; border: none; pointer-events: none;"></iframe>
+                        </div>
                     </div>
-                    <span class="device-status online">Online</span>
+                ` : '';
+                
+                li.innerHTML = `
+                    <div class="device-header">
+                        <div class="device-info">
+                            <h3>${device.id}</h3>
+                            <p>${device.info.device || 'Unknown'} v${device.info.version || '?'}</p>
+                        </div>
+                        <span class="device-status online">Online</span>
+                    </div>
+                    ${streamInfo}
                 `;
                 li.onclick = () => {
                     targetDevice.value = device.id;
@@ -647,16 +741,209 @@
             log('info', 'Log cleared');
         }
         
+        // Load website preview
+        function loadWebsite() {
+            const url = websiteUrl.value.trim();
+            if (!url) {
+                log('warning', 'Please enter a website URL');
+                return;
+            }
+            
+            // Validate URL
+            try {
+                const urlObj = new URL(url);
+                if (!urlObj.protocol.startsWith('http')) {
+                    throw new Error('URL must start with http:// or https://');
+                }
+            } catch (err) {
+                log('error', `Invalid URL: ${err.message}`);
+                return;
+            }
+            
+            log('info', `Loading website: ${url}`);
+            currentUrl = url;
+            
+            // Show preview
+            websitePreview.style.display = 'block';
+            
+            // Use CORS proxy if enabled
+            const proxyUrl = useProxy.checked 
+                ? `https://corsproxy.io/?${encodeURIComponent(url)}`
+                : url;
+            
+            // Try to load
+            websiteFrame.src = proxyUrl;
+            
+            // Detect if iframe is blocked
+            let loadTimeout = setTimeout(() => {
+                if (!useProxy.checked) {
+                    log('warning', 'Website may block iframe loading due to security policies');
+                    log('info', 'Try enabling the "Use CORS proxy" option');
+                }
+                // Enable streaming anyway - the device might handle it differently
+                streamBtn.disabled = false;
+            }, 3000);
+            
+            websiteFrame.onload = () => {
+                clearTimeout(loadTimeout);
+                streamBtn.disabled = false;
+                log('success', 'Website loaded in preview');
+            };
+            
+            websiteFrame.onerror = () => {
+                clearTimeout(loadTimeout);
+                log('error', 'Failed to load website - may be blocked by CORS/X-Frame-Options');
+                log('info', 'You can still stream the URL to the device');
+                streamBtn.disabled = false;
+            };
+        }
+        
+        // Stream website to device
+        function startStream() {
+            if (!currentUrl) {
+                log('error', 'No website loaded');
+                return;
+            }
+            
+            if (devices.size === 0) {
+                log('error', 'No devices connected');
+                return;
+            }
+            
+            const quality = streamQuality.value;
+            const targetDeviceId = targetDevice.value.trim();
+            
+            log('info', `Starting stream (${quality} quality)...`);
+            
+            // Send initial stream command
+            const streamCommand = {
+                type: 'streamStart',
+                url: currentUrl,
+                quality: quality,
+                timestamp: Date.now()
+            };
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                if (targetDeviceId) {
+                    ws.send(JSON.stringify({
+                        type: 'sendToDevice',
+                        deviceId: targetDeviceId,
+                        data: streamCommand
+                    }));
+                    // Update local device info to show streaming immediately
+                    updateDeviceInfo(targetDeviceId, streamCommand);
+                    log('success', `Stream started to device: ${targetDeviceId}`);
+                } else {
+                    ws.send(JSON.stringify({
+                        type: 'broadcast',
+                        data: streamCommand
+                    }));
+                    // Update all devices
+                    devices.forEach((device, deviceId) => {
+                        updateDeviceInfo(deviceId, streamCommand);
+                    });
+                    log('success', 'Stream started to all devices');
+                }
+                
+                streamBtn.disabled = true;
+                stopStreamBtn.disabled = false;
+                
+                // Send periodic updates (simulating streaming)
+                let frameCount = 0;
+                streamInterval = setInterval(() => {
+                    frameCount++;
+                    const updateCommand = {
+                        type: 'streamUpdate',
+                        url: currentUrl,
+                        frame: frameCount,
+                        quality: quality,
+                        timestamp: Date.now()
+                    };
+                    
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        if (targetDeviceId) {
+                            ws.send(JSON.stringify({
+                                type: 'sendToDevice',
+                                deviceId: targetDeviceId,
+                                data: updateCommand
+                            }));
+                        } else {
+                            ws.send(JSON.stringify({
+                                type: 'broadcast',
+                                data: updateCommand
+                            }));
+                        }
+                    }
+                }, 1000); // Update every second
+            }
+        }
+        
+        // Stop streaming
+        function stopStream() {
+            if (streamInterval) {
+                clearInterval(streamInterval);
+                streamInterval = null;
+            }
+            
+            const targetDeviceId = targetDevice.value.trim();
+            const stopCommand = {
+                type: 'streamStop',
+                timestamp: Date.now()
+            };
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                if (targetDeviceId) {
+                    ws.send(JSON.stringify({
+                        type: 'sendToDevice',
+                        deviceId: targetDeviceId,
+                        data: stopCommand
+                    }));
+                    // Clear streaming state for this device
+                    updateDeviceInfo(targetDeviceId, stopCommand);
+                } else {
+                    ws.send(JSON.stringify({
+                        type: 'broadcast',
+                        data: stopCommand
+                    }));
+                    // Clear streaming state for all devices
+                    devices.forEach((device, deviceId) => {
+                        updateDeviceInfo(deviceId, stopCommand);
+                    });
+                }
+            }
+            
+            streamBtn.disabled = false;
+            stopStreamBtn.disabled = true;
+            log('info', 'Stream stopped');
+        }
+        
         // Event listeners
         sendBtn.onclick = sendMessage;
         pingBtn.onclick = pingServer;
         statsBtn.onclick = getStats;
         clearBtn.onclick = clearLog;
+        loadWebsiteBtn.onclick = loadWebsite;
+        streamBtn.onclick = startStream;
+        stopStreamBtn.onclick = stopStream;
         
         messageInput.onkeypress = (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
+            }
+        };
+        
+        websiteUrl.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadWebsite();
+            }
+        };
+        
+        // Cleanup on page unload
+        window.onbeforeunload = () => {
+            if (streamInterval) {
+                stopStream();
             }
         };
         

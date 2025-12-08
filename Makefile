@@ -11,7 +11,11 @@ SRC_DIR := src
 
 # Source files
 SRCS := $(wildcard $(SRC_DIR)/*.c)
-OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
+# Exclude threadx_netx_init.c and websocket_client.c from host simulation
+HOST_SRCS := $(filter-out $(SRC_DIR)/threadx_netx_init.c $(SRC_DIR)/websocket_client.c, $(SRCS))
+# Ensure stream_handler.c and ws_client_sim.c are included
+HOST_SRCS := $(filter $(SRC_DIR)/main.c $(SRC_DIR)/stream_handler.c $(SRC_DIR)/ws_client_sim.c, $(HOST_SRCS))
+OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(HOST_SRCS))
 ARM_OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/arm/%.o,$(SRCS))
 
 # Output binaries

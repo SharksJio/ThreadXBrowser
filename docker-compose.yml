@@ -6,8 +6,8 @@ services:
       context: ./gateway
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"  # Browser WebSocket + Web App
-      - "9000:9000"  # Device WebSocket
+      - "8081:8080"  # Browser WebSocket + Web App (host:container)
+      - "9001:9000"  # Device WebSocket (host:container)
     environment:
       - NODE_ENV=production
       - BROWSER_PORT=8080
@@ -26,8 +26,8 @@ services:
 
   emulator:
     build:
-      context: ./emulator
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: emulator/Dockerfile
     depends_on:
       gateway:
         condition: service_healthy
